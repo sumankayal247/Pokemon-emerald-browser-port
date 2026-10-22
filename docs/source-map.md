@@ -11,7 +11,8 @@
 | Tileset palette load | `src/fieldmap.c:LoadMapTilesetPalettes`; `NUM_PALS_IN_PRIMARY` | General palettes 0–5 plus Petalburg palettes 6–12 |
 | Littleroot layout | `data/layouts/layouts.json`, `data/layouts/LittlerootTown/map.bin` | exact 20×20 packed block layout |
 | Littleroot events | `data/maps/LittlerootTown/map.json`, `scripts.inc` | map object coordinates, transition placement of the twin, signs and initial NPC messages |
-| Player animation | `src/data/object_events/object_event_anims.h`, `object_event_pic_tables.h` | source frame order, east flip, 8-frame walking animation halves |
+| Player animation | `src/data/object_events/object_event_anims.h`, `object_event_pic_tables.h` | source frame order, east flip, 8-frame walking animation halves; OBJ palette index 0 converted to browser alpha |
+| Field dialogue UI | `src/menu.c:WindowFunc_DrawDialogueFrame`, `src/fonts.c`, `charmap.txt`, `graphics/fonts/latin_normal.png`, `graphics/text_window/message_box.png` | original 8×8 frame tiles, 16×16 glyph cells, Emerald character codes, and per-glyph advances |
 
 ## Asset extraction
 

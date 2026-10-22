@@ -10,6 +10,8 @@ const destinationBlocked:Record<Direction,Set<number>>={
 const opposite:Record<Direction,Direction>={south:'north',north:'south',west:'east',east:'west'};
 /** Reference: event_object_movement.c GetCollisionAtCoords and IsMetatileDirectionallyImpassable. */
 export function destination(pos:Position,direction:Direction){const [x,y]=vector[direction];return{x:pos.x+x,y:pos.y+y};}
+/** ObjectEventUpdateElevation preserves its current elevation on multi-level (15) tiles. */
+export function elevationAfterStep(current:number,mapElevation:number){return mapElevation===15?current:mapElevation;}
 export function canMove(map:MapData,pos:Position,direction:Direction,objects:MapObject[]):boolean {
  const next=destination(pos,direction); if(next.x<0||next.y<0||next.x>=map.width||next.y>=map.height)return false;
  const from=map.blocks[pos.y*map.width+pos.x], to=map.blocks[next.y*map.width+next.x];

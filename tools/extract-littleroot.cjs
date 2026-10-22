@@ -91,10 +91,25 @@ fs.writeFileSync(path.join(out,'map.json'),JSON.stringify({
   warps:mapJson.warp_events,backgroundEvents:mapJson.bg_events,
   objects:mapJson.object_events
 },null,2));
+// Source object-event PNGs intentionally have no tRNS chunk because grit treats
+// palette index 0 as transparent in GBA OBJ mode. Browsers instead display it as
+// opaque, so emit equivalent RGBA sprites with index 0 alpha-cleared.
+function writeObjectSprite(from, to) {
+  const source=indexedPng(path.join(pret,from));
+  // Object PNGs carry the correct palette in PLTE, which can differ by sprite.
+  const bytes=fs.readFileSync(path.join(pret,from)); let plte;
+  for(let p=8;p<bytes.length;){const n=bytes.readUInt32BE(p),type=bytes.toString('ascii',p+4,p+8);if(type==='PLTE')plte=bytes.subarray(p+8,p+8+n);p+=n+12;}
+  const png=new PNG({width:source.width,height:source.height,colorType:6});
+  for(let y=0;y<source.height;y++)for(let x=0;x<source.width;x++){
+    const index=source.rows[y][x],p=(y*source.width+x)*4;
+    png.data[p]=plte[index*3];png.data[p+1]=plte[index*3+1];png.data[p+2]=plte[index*3+2];png.data[p+3]=index===0?0:255;
+  }
+  fs.writeFileSync(path.join(out,to),PNG.sync.write(png));
+}
 for(const [from,to] of [
  ['graphics/object_events/pics/people/brendan/walking.png','brendan.png'],
  ['graphics/object_events/pics/people/twin.png','twin.png'],
  ['graphics/object_events/pics/people/boy_2.png','boy.png'],
  ['graphics/object_events/pics/people/fat_man.png','fat-man.png']
-]) fs.copyFileSync(path.join(pret,from),path.join(out,to));
-console.log('Extracted Littleroot map, metatiles, attributes, events, and object sprites.');
+]) writeObjectSprite(from,to);
+console.log('Extracted Littleroot map, metatiles, attributes, events, and transparent object sprites.');

@@ -15,7 +15,7 @@ function indexedPng(filename) {
   const b = fs.readFileSync(filename);
   const width = b.readUInt32BE(16), height = b.readUInt32BE(20);
   const depth = b[24], colorType = b[25];
-  if (depth !== 4 || colorType !== 3) throw new Error(`Expected indexed 4bpp PNG: ${filename}`);
+  if ((depth !== 2 && depth !== 4) || colorType !== 3) throw new Error(`Expected indexed 2/4bpp PNG: ${filename}`);
   const idats = [];
   for (let p = 8; p < b.length;) {
     const n = b.readUInt32BE(p); const type = b.toString('ascii', p + 4, p + 8);
@@ -23,7 +23,7 @@ function indexedPng(filename) {
     p += n + 12;
   }
   const raw = zlib.inflateSync(Buffer.concat(idats));
-  const stride = Math.ceil(width / 2), rows = [];
+  const stride = Math.ceil(width * depth / 8), rows = [];
   let previous = Buffer.alloc(stride), at = 0;
   const paeth = (a,b,c) => { const p=a+b-c, pa=Math.abs(p-a), pb=Math.abs(p-b), pc=Math.abs(p-c); return pa<=pb&&pa<=pc?a:pb<=pc?b:c; };
   for (let y=0;y<height;y++) {
@@ -33,7 +33,10 @@ function indexedPng(filename) {
       row[x]=(v+(filter===0?0:filter===1?left:filter===2?up:filter===3?Math.floor((left+up)/2):paeth(left,up,ul)))&255;
     }
     const pixels = new Uint8Array(width);
-    for(let x=0;x<width;x++) pixels[x] = x&1 ? row[x>>1]&15 : row[x>>1]>>4;
+    for(let x=0;x<width;x++) {
+      if(depth===4) pixels[x] = x&1 ? row[x>>1]&15 : row[x>>1]>>4;
+      else pixels[x] = (row[x>>2] >> (6-(x&3)*2)) & 3;
+    }
     rows.push(pixels); previous=row;
   }
   return { width, height, rows };
@@ -91,25 +94,35 @@ fs.writeFileSync(path.join(out,'map.json'),JSON.stringify({
   warps:mapJson.warp_events,backgroundEvents:mapJson.bg_events,
   objects:mapJson.object_events
 },null,2));
-// Source object-event PNGs intentionally have no tRNS chunk because grit treats
-// palette index 0 as transparent in GBA OBJ mode. Browsers instead display it as
-// opaque, so emit equivalent RGBA sprites with index 0 alpha-cleared.
-function writeObjectSprite(from, to) {
-  const source=indexedPng(path.join(pret,from));
-  // Object PNGs carry the correct palette in PLTE, which can differ by sprite.
-  const bytes=fs.readFileSync(path.join(pret,from)); let plte;
+function embeddedPalette(filename) {
+  const bytes=fs.readFileSync(filename); let plte;
   for(let p=8;p<bytes.length;){const n=bytes.readUInt32BE(p),type=bytes.toString('ascii',p+4,p+8);if(type==='PLTE')plte=bytes.subarray(p+8,p+8+n);p+=n+12;}
+  if(!plte) throw new Error(`No PLTE in ${filename}`);
+  return plte;
+}
+function writeIndexedRgba(from, to, transparentZero) {
+  const filename=path.join(pret,from),source=indexedPng(filename),plte=embeddedPalette(filename);
   const png=new PNG({width:source.width,height:source.height,colorType:6});
   for(let y=0;y<source.height;y++)for(let x=0;x<source.width;x++){
     const index=source.rows[y][x],p=(y*source.width+x)*4;
-    png.data[p]=plte[index*3];png.data[p+1]=plte[index*3+1];png.data[p+2]=plte[index*3+2];png.data[p+3]=index===0?0:255;
+    png.data[p]=plte[index*3];png.data[p+1]=plte[index*3+1];png.data[p+2]=plte[index*3+2];png.data[p+3]=transparentZero&&index===0?0:255;
   }
   fs.writeFileSync(path.join(out,to),PNG.sync.write(png));
 }
+// GBA OBJ/font mode treats palette index 0 as transparent; source PNGs do not
+// carry a tRNS chunk because grit applies that rule during the native build.
+function writeObjectSprite(from, to) { writeIndexedRgba(from,to,true); }
 for(const [from,to] of [
  ['graphics/object_events/pics/people/brendan/walking.png','brendan.png'],
  ['graphics/object_events/pics/people/twin.png','twin.png'],
  ['graphics/object_events/pics/people/boy_2.png','boy.png'],
  ['graphics/object_events/pics/people/fat_man.png','fat-man.png']
 ]) writeObjectSprite(from,to);
-console.log('Extracted Littleroot map, metatiles, attributes, events, and transparent object sprites.');
+writeIndexedRgba('graphics/fonts/latin_normal.png','font-normal.png',true);
+writeIndexedRgba('graphics/text_window/message_box.png','message-box.png',false);
+const fontsSource=fs.readFileSync(path.join(pret,'src/fonts.c'),'utf8');
+const widthMatch=fontsSource.match(/gFontNormalLatinGlyphWidths\[\]\s*=\s*\{([\s\S]*?)\};/);
+if(!widthMatch) throw new Error('Could not locate gFontNormalLatinGlyphWidths');
+const fontWidths=(widthMatch[1].match(/\d+/g)||[]).map(Number);
+fs.writeFileSync(path.join(out,'font-widths.json'),JSON.stringify(fontWidths));
+console.log('Extracted Littleroot map, metatiles, events, transparent sprites, font, and dialogue frame.');
